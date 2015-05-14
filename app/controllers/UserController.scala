@@ -6,11 +6,12 @@ import play.api._
 import play.api.mvc._
 import play.api.libs.json._
 import scalikejdbc._
+import io.really.jwt._
 import models._
 
 object UserController extends Controller {
   implicit val session = AutoSession
-  val secret = Play.current.configuration.getString("application.secret").get
+  val secret = Play.current.configuration.getString("application.secret")
 
   def events(from: Option[String], limit: Int, offset: Int) = Action { request =>
     if (limit <= 0) {
@@ -36,6 +37,80 @@ object UserController extends Controller {
               )
             )
           })
+        )
+      }
+    }
+  }
+
+  def reserve = Action { request =>
+    val body = request.body.asFormUrlEncoded
+    val rawtoken = JWT.decode(body.get("token").head, secret)
+    val reserve = body.get("reserve").head.toBoolean
+    val eventId = body.get("event_id").head.toInt
+    var id: Int = 0
+
+    if (rawtoken.isInstanceOf[JWTResult.JWT]) {
+      val token = rawtoken.asInstanceOf[JWTResult.JWT].payload
+      id = (token \ "id").as[Int]
+    }
+
+    if (id != 0) {
+      val user = sql"SELECT * FROM users WHERE id = ${id}"
+        .map(rs => User(rs)).single().apply.orNull
+
+      if (user == null) {
+        Ok {
+          Json.obj(
+            "code" -> 500,
+            "message" -> "No user found"
+          )
+        }
+      } else if (user.groupId == 2) {
+        Ok {
+          Json.obj(
+            "code" -> 401,
+            "message" -> "Cannot reserve"
+          )
+        }
+      } else {
+        val num: Int = sql"SELECT COUNT(*) AS num FROM attends WHERE user_id = ${id} AND event_id = ${eventId}"
+          .map(rs => rs.int("num")).first().apply().get
+        println(num)
+        if (num > 0 && reserve) {
+          Ok {
+            Json.obj(
+              "code" -> 501,
+              "message" -> "already reserved"
+            )
+          }
+        } else if (num == 0 && !reserve) {
+          Ok {
+            Json.obj(
+              "code" -> 502,
+              "message" -> "not reserved"
+            )
+          }
+        } else if (reserve) {
+          sql"INSERT INTO attends (user_id, event_id) VALUES (${id}, ${eventId})".update.apply()
+          Ok {
+            Json.obj(
+              "code" -> 200
+            )
+          }
+        } else {
+          sql"DELETE FROM attends WHERE user_id = ${id} AND event_id = ${eventId}".update.apply()
+          Ok {
+            Json.obj(
+              "code" -> 200
+            )
+          }
+        }
+      }
+    } else {
+      Ok {
+        Json.obj(
+          "code" -> 401,
+          "message" -> "Invalid token"
         )
       }
     }

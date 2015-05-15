@@ -44,9 +44,16 @@ object UserController extends Controller {
 
   def reserve = Action { request =>
     val body = request.body.asFormUrlEncoded
-    val rawtoken = JWT.decode(body.get("token").head, secret)
-    val reserve = body.get("reserve").head.toBoolean
-    val eventId = body.get("event_id").head.toInt
+    def saveGet(key: String, default: String = ""): String = {
+      if (body.exists(item => item.keys.exists(k => k == key)))
+        body.get(key).head
+      else
+        default
+    }
+
+    val rawtoken = JWT.decode(saveGet("token"), secret)
+    val reserve = saveGet("reserve", "false").toBoolean
+    val eventId = saveGet("event_id", "0").toInt
     var id: Int = 0
 
     if (rawtoken.isInstanceOf[JWTResult.JWT]) {
@@ -75,7 +82,6 @@ object UserController extends Controller {
       } else {
         val num: Int = sql"SELECT COUNT(*) AS num FROM attends WHERE user_id = ${id} AND event_id = ${eventId}"
           .map(rs => rs.int("num")).first().apply().get
-        println(num)
         if (num > 0 && reserve) {
           Ok {
             Json.obj(
@@ -90,15 +96,12 @@ object UserController extends Controller {
               "message" -> "not reserved"
             )
           }
-        } else if (reserve) {
-          sql"INSERT INTO attends (user_id, event_id) VALUES (${id}, ${eventId})".update.apply()
-          Ok {
-            Json.obj(
-              "code" -> 200
-            )
-          }
         } else {
-          sql"DELETE FROM attends WHERE user_id = ${id} AND event_id = ${eventId}".update.apply()
+          if (reserve) {
+            sql"INSERT INTO attends (user_id, event_id) VALUES (${id}, ${eventId})".update.apply()
+          } else {
+            sql"DELETE FROM attends WHERE user_id = ${id} AND event_id = ${eventId}".update.apply()
+          }
           Ok {
             Json.obj(
               "code" -> 200

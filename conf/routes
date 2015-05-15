@@ -1,3 +1,4 @@
-POST        /api/auth/login         controllers.AuthController.login
-GET         /api/users/events       controllers.UserController.events(from: Option[String], limit: Int ?= 2147483647, offset: Int ?= 0)
-POST        /api/users/reserve      controllers.UserController.reserve
+POST        /api/auth/login             controllers.AuthController.login
+GET         /api/users/events           controllers.UserController.events(from: Option[String], limit: Int ?= 2147483647, offset: Int ?= 0)
+POST        /api/users/reserve          controllers.UserController.reserve
+POST        /api/companies/events       controllers.CompanyController.events
